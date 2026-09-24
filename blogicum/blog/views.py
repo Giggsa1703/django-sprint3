@@ -1,19 +1,24 @@
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
-
 from .models import Category, Post
+from .constants import POSTS_PER_PAGE
+
+# Вспомогательная функция принимает queryset, оптимизирует и фильтрует его
+def get_published_posts(queryset):
+    return queryset.select_related(
+        'author', 'location', 'category'
+    ).filter(
+        is_published=True,
+        category__is_published=True,
+        pub_date__lte=timezone.now()
+    )
 
 
 def index(request):
     template = 'blog/index.html'
-    # Меняем имя переменной для соответствия тестам
-    page_obj = Post.objects.filter(
-        is_published=True,
-        category__is_published=True,
-        pub_date__lte=timezone.now()
-    ).order_by('-pub_date')[:5]
-
-    # Ключ обязательно должен называться 'page_obj'
+    # Передаем все посты в функцию, сортировка подтянется из Meta модели Post
+    page_obj = get_published_posts(Post.objects.all())[:POSTS_PER_PAGE]
+    
     context = {'page_obj': page_obj}
     return render(request, template, context)
 
@@ -25,12 +30,9 @@ def category_posts(request, category_slug):
         slug=category_slug,
         is_published=True
     )
-    post_list = Post.objects.filter(
-        category=category,
-        is_published=True,
-        pub_date__lte=timezone.now()
-    ).order_by('-pub_date')
-
+    # Достаем посты через related_name
+    post_list = get_published_posts(category.posts.all())
+    
     context = {
         'category': category,
         'post_list': post_list,
@@ -41,12 +43,9 @@ def category_posts(request, category_slug):
 def post_detail(request, post_id):
     template = 'blog/detail.html'
     post = get_object_or_404(
-        Post,
-        pk=post_id,
-        is_published=True,
-        category__is_published=True,
-        pub_date__lte=timezone.now()
+        get_published_posts(Post.objects.all()),
+        pk=post_id
     )
-
+    
     context = {'post': post}
     return render(request, template, context)
